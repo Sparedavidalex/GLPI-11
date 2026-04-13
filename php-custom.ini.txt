@@ -1,0 +1,17 @@
+; ===================================================
+; Configurações Otimizadas do PHP para o GLPI 11
+; ===================================================
+
+; Aumenta o limite de memória para processamento do GLPI
+memory_limit = 256M
+
+; Aumenta o tamanho máximo para upload de arquivos e documentos nos chamados
+upload_max_filesize = 20M
+post_max_size = 20M
+
+; Aumenta o tempo máximo de execução de scripts (evita timeout em atualizações)
+max_execution_time = 600
+max_input_time = 60
+
+; Segurança de Sessão (Obrigatório no GLPI 11)
+session.cookie_httponly = on
