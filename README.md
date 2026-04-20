@@ -2,113 +2,107 @@
 
 ## 🎯 Objetivo
 
-Este repositório contém a documentação técnica e os procedimentos de deploy para a implementação do GLPI 11.0.6 em ambiente de nuvem, focado em otimização de recursos e conformidade com as novas exigências de segurança da versão 11.
+Este repositório contém a documentação técnica avançada para a implementação, customização e endurecimento do GLPI 11.0.6. O projeto foca em escalabilidade, automação de notificações e integração com o ecossistema corporativo.
 
 | Detalhe | Valor |
 | :--- | :--- |
 | **Documento** | Documento Tecnico |
-| **Tecnologias** | Microsoft Entra ID (Azure AD) |
-| **Escopo** | Procedimento tecnico relacionado a 📑 sistema de gestão de ativos e service desk: glpi 11 na aws. |
+| **Tecnologias** | Tecnologias identificadas automaticamente |
+| **Escopo** | Procedimento tecnico relacionado a o desafio inicial era implantar uma solução de itsm robusta em uma instância aws ec2 t3.micro (1gb ram). com a evolução do projeto, surgiu a necessidade de:. |
 | **Pre-requisitos** | Acessos administrativos, rede configurada e dependencias do ambiente validadas. |
 
 ---
 
 ## 📌 1. O Cenário / Problema
 
-O desafio consistia em implantar uma solução robusta de ITSM (IT Service Management) para centralizar a gestão de inventário e chamados técnicos. O ambiente alvo era uma instância AWS EC2 t3.micro (recurso computacional limitado: 2 vCPUs e 1GB RAM).
+Comunicação Falha: A ausência de notificações automáticas gerava atrasos nos SLAs.
 
-**As principais dificuldades técnicas identificadas foram:**
+Complexidade da Interface: O excesso de campos nativos dificultava a adoção do sistema pelos usuários finais.
 
-Gestão de Recursos: A escassez de memória RAM para sustentar a stack LAMP e o banco de dados MariaDB simultaneamente.
-
-Segurança de Diretórios: A versão 11 do GLPI exige que apenas o diretório /public esteja exposto ao servidor web, visando mitigar vulnerabilidades de acesso direto a arquivos de sistema.
-
-Dependências Modernas: A necessidade de garantir que todas as extensões do PHP 8.3 estivessem presentes para suportar as novas funcionalidades de criptografia e internacionalização da ferramenta.
+Rastreabilidade: Necessidade de campos customizados para gestão de patrimônio e centros de custo.
 
 ## 📌 2. A Solução
 
-A abordagem adotada foi o deploy de uma stack LAMP (Linux, Apache, MariaDB, PHP) otimizada.
+**Além da stack LAMP otimizada com PHP 8.3 e MariaDB 10.11, implementamos uma camada de inteligência de negócio:**
 
-**Tecnologias Utilizadas:**
+Relay de E-mail (SMTP): Integração com Google Workspace via TLS (Porta 587) utilizando App Passwords.
 
-AWS EC2 (Ubuntu 24.04 LTS): Escolhido pela estabilidade do kernel e ciclo de vida longo.
+Customização de UX: Simplificação de formulários e modelos de chamados.
 
-PHP 8.3: Versão de runtime necessária para performance e compatibilidade com o GLPI 11.
-
-MariaDB 10.11: Utilizado como motor de banco de dados devido à sua eficiência em ambientes de baixo consumo de memória.
-
-Linux Swap (1GB): Implementado como medida de contornamento (workaround) para evitar falhas de Out-Of-Memory (OOM) no MariaDB durante processos de indexação ou busca pesada.
+Ecossistema de Plugins: Expansão das funcionalidades nativas para suporte a SLAs complexos e relatórios gerenciais.
 
 ## 🧱 3. Topologia / Arquitetura
 
-A arquitetura segue o modelo de servidor único (Standalone), mas com separação lógica de privilégios.
+A solução foi expandida para incluir integrações externas e automação via Cron.
 
-Fluxo de Dados: O tráfego entra pela porta 80/443, é processado pelo VirtualHost do Apache que, por segurança, aponta para a pasta /public. O PHP-FPM processa as requisições e comunica-se via socket local com o MariaDB.
+Camada de Aplicação: GLPI 11.0.6 rodando sobre Apache (diretório /public exposto).
 
-Segurança de Rede: A instância está inserida em uma VPC, com o Security Group liberando apenas os protocolos necessários (HTTP, HTTPS, SSH) e restringindo o acesso administrativo ao IP da gestão.
+Camada de Dados: MariaDB com suporte a utf8mb4.
+
+Serviços de Background: Agendador de tarefas (Crontab) processando filas de e-mail e automações a cada 60 segundos.
+
+Saída de Dados: Conexão segura com smtp.gmail.com para disparos transacionais.
 
 ## 📌 4. Passo a Passo (Runbook)
 
-### 🔹 4.1. Preparação do S.O e Instalação de Dependências
-
-**Atualização do repositório e instalação dos pacotes necessários para o PHP 8.3:**
+### 🔹 4.1. Instalação e Performance (Base)
 
 ```bash
 Bash
+# Instalação da Stack e Extensões PHP 8.3
 sudo apt update && sudo apt upgrade -y
 sudo apt install apache2 mariadb-server php8.3 php8.3-curl php8.3-gd php8.3-mbstring \
 ```
 
 php8.3-xml php8.3-mysql php8.3-bz2 php8.3-zip php8.3-intl php8.3-ldap \
 php8.3-bcmath php8.3-sodium -y
-### 🔹 4.2. Provisionamento do Banco de Dados
 
-**Configuração da base de dados utilizando o collation recomendado para evitar erros de caracteres especiais:**
+# Ativação do Swap (Essencial para t3.micro)
+sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+### 🔹 4.2. Configuração de Notificações (SMTP)
 
-SQL
-CREATE DATABASE glpi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'glpi_user'@'localhost' IDENTIFIED BY 'SUA_SENHA_SEGURA';
-GRANT ALL PRIVILEGES ON glpi.* TO 'glpi_user'@'localhost';
-FLUSH PRIVILEGES;
-### 🔹 4.3. Configuração de Permissões e Segurança
+Configurado em: Configurar > Notificações > Configuração de acompanhamentos por e-mail.
 
-**Ajuste do proprietário dos arquivos para o usuário do serviço web e aplicação do endurecimento (hardening) de diretórios:**
+Modo de envio: SMTP+TLS.
+
+Servidor: smtp.gmail.com | Porta: 587.
+
+Autenticação: Sim (App Password de 16 dígitos).
+
+### 🔹 4.3. Plugins e Customização Corporativa
+
+**Módulos validados e instalados no ambiente:**
+
+Fields: Adição de campos de "Patrimônio" e "Centro de Custo".
+
+Escalade: Gestão automática de escalonamento de tickets.
+
+Meta-Demands: Fluxos de trabalho integrados (Onboarding de funcionários).
+
+MReporting: Dashboards para métricas de TMA (Tempo Médio de Atendimento).
+
+### 🔹 4.4. Automação do Sistema (Cron)
+
+**Para que os e-mails e SLAs funcionem, o Cron do Linux foi configurado:**
 
 ```bash
 Bash
-# Definindo permissões no diretório raiz
-sudo chown -R www-data:www-data /var/www/html/glpi
-sudo chmod -R 755 /var/www/html/glpi
+# Editar o crontab do usuário www-data
 ```
 
-Nota: O VirtualHost deve ser configurado com DocumentRoot /var/www/html/glpi/public.
+sudo crontab -u www-data -e
 
-### 🔹 4.4. Tuning do PHP (php.ini)
-
-**Ajustes realizados para garantir a estabilidade do sistema e suporte a uploads:**
-
-Ini, TOML
-memory_limit = 256M
-upload_max_filesize = 20M
-date.timezone = America/Sao_Paulo
-session.cookie_httponly = on
+# Adicionar a linha abaixo para execução por minuto
+* * * * * /usr/bin/php8.3 /var/www/html/glpi/front/cron.php
 ### 🔹 4.5. Troubleshooting (Resolução de Erros)
 
-Problema: Instabilidade do MariaDB ao iniciar a instalação via Web.
+Erro: Erro de autenticação SMTP ao usar a senha padrão da conta Google.
 
-Causa: Esgotamento da memória RAM física (1GB).
+Causa: Bloqueio de "Apps menos seguros" pelo Google.
 
-Solução: Criação de um arquivo de Swap de 1GB para garantir memória virtual de backup.
+Solução: Ativação de 2FA e criação de uma Senha de Aplicativo dedicada.
 
-```bash
-Bash
-```
+Erro: Campo "Urgência" confundindo usuários.
 
-sudo fallocate -l 1G /swapfile
-```bash
-sudo chmod 600 /swapfile
-```
-
-sudo mkswap /swapfile
-sudo swapon /swapfile
-# Adicionado ao /etc/fstab para persistência
+Solução: Criação de Modelos de Chamado simplificados, ocultando campos via interface técnica.
